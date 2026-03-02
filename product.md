@@ -1,47 +1,56 @@
-# Les'Go - Product Requirements
+# Les'Go - Product Requirements (Final Production Version)
 
 ## 1. Core Mission
-**Les'Go** is a secure, terminal-based messaging system designed for developers who prioritize speed, security, and minimal interfaces. It provides a robust, end-to-end encrypted (E2EE) communication platform that operates entirely within the terminal.
+**Les'Go** is a production-ready, CLI-based peer messaging system built in Go. It operates without a traditional UI, using pure terminal interaction, and prioritizes privacy by using in-memory-only server storage and device-based identity.
 
 ## 2. Functional Requirements
 
-### 2.1 User Management & Authentication
-- **User Registration**: Users must be able to register with a unique username and a secure password.
-- **Key Generation**: Upon registration, the client must automatically generate a cryptographic key pair (Private/Public).
-- **Public Key Storage**: The server must store the user's public key for encryption by other users.
-- **Secure Login**: Users must be able to log in securely. Passwords must be hashed using `Bcrypt` before storage.
-- **Session Management**: Authenticated sessions must be managed using JSON Web Tokens (JWT).
+### 2.1 Device Identity
+- **Permanent ID**: On first run, the client generates a random 10-digit numeric ID.
+- **Persistence**: The ID is stored locally in `device.txt` and reused on subsequent runs.
+- **Command**: `lesgo id` prints the device ID.
 
-### 2.2 End-to-End Encryption (E2EE)
-- **Client-Side Encryption**: All message content must be encrypted on the sender's client before being sent to the server.
-- **Client-Side Decryption**: Only the recipient's client, holding the corresponding private key, should be able to decrypt the message content.
-- **Private Key Security**: Private keys must never leave the user's local machine.
-- **Public Key Retrieval**: The client must be able to fetch the public key of any registered user from the server.
+### 2.2 Connectivity
+- **Online Mode**: `lesgo online` connects to the central relay server via WebSockets and registers the device ID.
+- **In-Memory Storage**: The server stores online users and active chat sessions in memory only (no database).
 
-### 2.3 Real-Time Messaging
-- **WebSocket Communication**: The system must support real-time message delivery via persistent WebSocket connections.
-- **Persistent Routing**: The server must route messages from the sender to the intended recipient if they are online.
-- **Presence Tracking**: The system should track and reflect the online/offline status of users.
+### 2.3 Chat Request Flow
+- **Connect Command**: `lesgo connect <10-digit-id>` initiates a chat request.
+- **Request Forwarding**: The server forwards the request to the target device if online.
+- **Peer Acceptance**: The recipient sees an interactive prompt: `"Incoming chat request from <ID>. Accept? (y/n)"`.
+- **Active Mapping**: Upon acceptance, the server manages the session between both users in an `activeChats` map.
 
-### 2.4 Message Persistence & Synchronization
-- **Encrypted Storage**: The server must store encrypted message blobs to allow for offline delivery and history retrieval.
-- **Unread Tracking**: The system must track unread messages for each user.
-- **Offline Sync**: Upon logging in, the client should automatically fetch all unread messages from the server.
-- **Message Acknowledgment**: The client must notify the server when a message has been successfully received and decrypted.
+### 2.4 Real-time E2EE Messaging
+- **Instant Delivery**: Messages typed in the CLI are sent instantly to the peer.
+- **End-to-End Encryption (E2EE)**: RSA-2048 encryption is used for all peer-to-peer messages.
+- **Privacy**: Public keys are automatically exchanged upon chat acceptance. The server only sees Base64-encoded ciphertext.
+- **Concurrent Interaction**: Simultaneous goroutines handle socket listening and terminal input.
+- **Display Format**: Messages are shown as `<ID>: message text`.
 
-### 2.5 Terminal UI (CLI)
-- **Interactive Interface**: A rich terminal UI (TUI) built using `bubbletea` for chatting, navigating, and managing contacts.
-- **Command Support**: Support for slash commands (e.g., `/register`, `/login`, `/send`, `/history`, `/logout`).
+### 2.5 Disconnection Handling
+- **Cleanup**: On disconnect, the server removes the user from `onlineUsers` and cleans up any `activeChats`.
+- **Notification**: The remaining participant is notified when their peer leaves the chat.
 
 ## 3. Technical Requirements
-- **Language**: Go (Golang) for both client and server.
-- **Frameworks**: `charmbracelet/bubbletea` (TUI), `gin-gonic/gin` (API), `gorilla/websocket` (Real-time).
-- **Database**: PostgreSQL (Production) or SQLite (Development/Local).
-- **Security**: JWT for auth, Bcrypt for passwords, NaCl/Box or similar for E2EE.
 
-## 4. Future Roadmap
-- [ ] **Group Chats**: Support for encrypted multi-user conversations.
-- [ ] **File Transfers**: Securely sending files within the terminal interface.
-- [ ] **Custom Themes**: Ability to customize the TUI appearance.
-- [ ] **Peer-to-Peer Mode**: Optional direct client-to-client communication.
-- [ ] **Multi-Device Support**: Synchronizing message history across different machines.
+### 3.1 Server
+- **Framework**: Gorilla WebSocket.
+- **Concurrency**: Thread-safe `sync.Map` for state management.
+- **Zero-Knowledge**: No access to decryption keys or message plaintext.
+
+### 3.2 Client
+- **Interaction**: `bufio.Scanner` for terminal UI.
+- **Security**: 
+    - `crypto/rsa` for 2048-bit key pairs.
+    - `encoding/base64` for safe transit of binary ciphertext.
+- **Structure**:
+    - `device.go`: Identity management.
+    - `crypto.go`: RSA & Base64 logic.
+    - `chat.go`: session flow & message loop.
+    - `main.go`: CLI command routing.
+
+## 4. CLI Commands
+- `lesgo id`: Prints the device ID.
+- `lesgo online`: Goes online and waits for incoming requests.
+- `lesgo connect <id>`: Attempts to establish a secure chat with a peer.
+- `lesgo exit`: Gracefully terminates the application.

@@ -1,125 +1,72 @@
-# Les'Go
+# Les'Go - WhatsApp for Terminal (CLI)
 
-> Les’Go is a secure, terminal-based messaging system built in Go that provides authenticated, end-to-end encrypted communication between users, with real-time delivery, unread tracking, and encrypted message persistence.
+Les'Go is a production-ready, peer messaging system written in Go. It features a centralized in-memory relay server and terminal-based clients with End-to-End Encryption (E2EE).
 
-## Overview
+## Features
 
-Les'Go is designed for developers who prefer speed, control, and minimal interfaces. It eliminates unnecessary UI layers and focuses on performance, security, and simplicity.
+- **Pure CLI Interaction**: No TUI, just pure terminal input/output.
+- **Persistent Device Identity**: 10-digit unique ID generated on first run.
+- **End-to-End Encryption (E2EE)**: RSA-2048 encryption for all messages.
+- **In-Memory Relay**: Zero-knowledge server that only forwards encrypted data.
+- **Anonymous**: No accounts, no database, no personal data stored.
 
-### Core Features
-
-- Authenticated user accounts
-- End-to-end encrypted messaging
-- Real-time message delivery
-- Unread message tracking
-- Persistent chat history
-- Fully terminal-based interface
-
-## Architecture
+## Project Structure
 
 ```text
-Client (CLI)  <---->  Server  <---->  Database
-     |                  |                 |
- Encryption       Auth + Routing     Persistent Storage
+.
+├── client/              # CLI Client logic
+│   ├── chat.go          # Chat session & input handling
+│   ├── crypto.go        # RSA Encryption/Decryption utilities
+│   ├── device.go        # Identity generation & persistence
+│   └── main.go          # CLI Entry point & command routing
+├── server/              # Relay Server logic
+│   └── main.go          # WebSocket relay & session manager
+├── README.md            # You are here
+├── product.md           # Product requirements
+├── todo.md              # Project status & development log
+└── go.mod               # Dependencies
 ```
 
-### Components
+## Getting Started
 
-#### Client
-- Terminal-based user interface
-- Handles encryption/decryption
-- Sends and receives messages via WebSocket
+### 1. Installation
+Ensure you have Go installed, then clone the repository.
 
-#### Server
-- Authentication and session management
-- Message routing
-- Real-time communication handling
-- Secure message storage
+### 2. Run the Relay Server
+Start the server in a terminal:
+```bash
+go run ./server/main.go
+# Server listens on :8080
+```
 
-#### Storage Layer
-- Persists users and messages
-- Enables history retrieval and unread tracking
+### 3. Run the Client
+In separate terminals, you can run multiple clients:
 
-## Security Model
+**Display your ID:**
+```bash
+go run ./client/*.go id
+```
 
-- Token-based authentication (JWT)
-- Password hashing using bcrypt
-- End-to-end encrypted message exchange
-- TLS-ready server configuration
-- Optional encrypted message storage
+**Go Online (Listen for requests):**
+```bash
+go run ./client/*.go online
+```
 
-## Message Storage
+**Connect to a Peer:**
+```bash
+go run ./client/*.go connect <Target_ID>
+```
 
-Messages are stored server-side to allow:
-- Viewing past conversations
-- Tracking unread messages
-- Resuming sessions across restarts
+## Security (E2EE)
+Les'Go uses RSA-2048 for end-to-end encryption. 
+1.  On startup, the client generates a temporary public/private key pair.
+2.  Public keys are exchanged automatically once a connection is accepted.
+3.  Messages are encrypted locally and only decrypted by the recipient.
+4.  The server only sees Base64-encoded ciphertext.
 
-**Supported databases:**
-- PostgreSQL
-- MongoDB
-- SQLite (lightweight deployments)
-
-## Tech Stack
-
-- **Core:** Go
-- **Networking:** `net/http`, `gorilla/websocket`
-- **Security:** JWT, bcrypt
-- **Database:** PostgreSQL / MongoDB / SQLite
-
-## Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/XplnHUB/Les-Go.git
-   cd Les-Go
-   ```
-
-2. **Build the server**
-   ```bash
-   go build -o server ./server
-   ```
-
-3. **Build the client**
-   ```bash
-   go build -o lesgo ./client
-   ```
-
-## Running the Application
-
-1. **Start the server**
-   ```bash
-   ./server
-   ```
-
-2. **Start the client**
-   ```bash
-   ./lesgo
-   ```
-
-## Example CLI Commands
-
-- `/register`
-- `/login`
-- `/send <username> <message>`
-- `/history <username>`
-- `/unread`
-- `/logout`
-
-## Roadmap
-
-- [ ] Group chats
-- [ ] File transfer support
-- [ ] Offline message synchronization
-- [ ] CLI themes and customization
-- [ ] Self-hosted deployment scripts
-- [ ] Peer-to-peer mode
-- [ ] Multi-device support
-
-## Contributing
-
-Contributions are welcome! Please ensure code quality, security, and performance standards are maintained.
+## Requirements
+- Go 1.20+
+- `github.com/gorilla/websocket`
 
 ## License
-
-MIT License
+MIT
