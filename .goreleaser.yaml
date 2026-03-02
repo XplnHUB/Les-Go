@@ -77,6 +77,8 @@ dockers:
       - "ghcr.io/xplnhub/lesgo-server:{{ .Version }}"
     dockerfile: server/Dockerfile
     use: buildx
+    ids:
+      - lesgo-server
     build_flag_templates:
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
