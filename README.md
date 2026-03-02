@@ -29,32 +29,32 @@ Les'Go is a production-ready, peer messaging system written in Go. It features a
 
 ## Getting Started
 
-### 1. Installation
-Ensure you have Go installed, then clone the repository.
+## Installation & Setup
 
-### 2. Run the Relay Server
-Start the server in a terminal:
+### 1. For Developers (via Go)
+If you have Go installed, you can install the client directly:
 ```bash
-go run ./server/main.go
-# Server listens on :8080
+go install github.com/XplnHUB/Les-Go/client@latest
+# Note: Binaries are moved to $(go env GOPATH)/bin
 ```
 
-### 3. Run the Client
-In separate terminals, you can run multiple clients:
+### 2. For End-Users (CLI Download)
+You can download the pre-compiled binaries from the [Releases](https://github.com/XplnHUB/Les-Go/releases) page.
 
-**Display your ID:**
+**Using GitHub CLI:**
 ```bash
-go run ./client/*.go id
+# Download the latest client for your architecture
+gh release download v1.0.1 -p "*darwin_arm64.tar.gz" # for Mac M1/M2/M3
+tar -xzf lesgo_*.tar.gz
+chmod +x lesgo
 ```
 
-**Go Online (Listen for requests):**
+**Using curl (Direct):**
 ```bash
-go run ./client/*.go online
-```
-
-**Connect to a Peer:**
-```bash
-go run ./client/*.go connect <Target_ID>
+# Example for Mac Silicon
+curl -L -O https://github.com/XplnHUB/Les-Go/releases/download/v1.0.1/lesgo_1.0.1_darwin_arm64.tar.gz
+tar -xzf lesgo_1.0.1_darwin_arm64.tar.gz
+./lesgo id
 ```
 
 ## Security (E2EE)

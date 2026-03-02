@@ -49,3 +49,35 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+
+brews:
+  - name: lesgo
+    repository:
+      owner: XplnHUB
+      name: homebrew-tap
+    directory: Formula
+    homepage: "https://github.com/XplnHUB/Les-Go"
+    description: "WhatsApp-style CLI chat with E2EE."
+    install: |
+      bin.install "lesgo"
+      bin.install "server_bin"
+
+scoops:
+  - name: lesgo
+    repository:
+      owner: XplnHUB
+      name: scoop-bucket
+    homepage: "https://github.com/XplnHUB/Les-Go"
+    description: "WhatsApp-style CLI chat with E2EE."
+    license: MIT
+
+dockers:
+  - image_templates:
+      - "ghcr.io/xplnhub/lesgo-server:latest"
+      - "ghcr.io/xplnhub/lesgo-server:{{ .Version }}"
+    dockerfile: server/Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description={{ .ProjectName }} relay server"
