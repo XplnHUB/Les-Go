@@ -16,10 +16,13 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.20'
+        go-version: '1.24'
 
-    - name: Build
-      run: go build -v ./...
+    - name: Build Server
+      run: go build -v -o server_bin ./server/main.go
+
+    - name: Build Client
+      run: go build -v -o lesgo ./client/*.go
 
     - name: Test
       run: go test -v ./...
