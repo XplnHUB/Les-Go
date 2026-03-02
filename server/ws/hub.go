@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -59,6 +60,16 @@ func (h *Hub) Run() {
 			h.clients[client.Username] = client
 			h.mu.Unlock()
 			log.Printf("Client connected: %s", client.Username)
+
+			// Send current online users to the new client
+			online := h.GetOnlineUsers()
+			event := Event{
+				Type:    "ONLINE_USERS",
+				Payload: strings.Join(online, ","),
+			}
+			data, _ := json.Marshal(event)
+			client.Send <- data
+
 			h.broadcastPresence(client.Username, "USER_ONLINE")
 
 		case client := <-h.unregister:

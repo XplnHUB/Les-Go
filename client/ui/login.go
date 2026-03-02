@@ -104,13 +104,25 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = err
 					return m, nil
 				}
+				// Save keys to disk
+				if err := crypto.SaveKeys(username, password, keys); err != nil {
+					m.err = fmt.Errorf("Registered, but failed to save keys: %v", err)
+					return m, nil
+				}
 				m.mode = "login"
-				m.err = fmt.Errorf("Registered! Press Enter to Login")
+				m.err = fmt.Errorf("Registered and keys saved! Press Enter to Login")
 				return m, nil
 			} else {
 				// Login
 				if err := m.client.Login(username, password); err != nil {
 					m.err = err
+					return m, nil
+				}
+
+				// Load keys from disk
+				keys, err := crypto.LoadKeys(username, password)
+				if err != nil {
+					m.err = fmt.Errorf("Login successful, but %v", err)
 					return m, nil
 				}
 
@@ -127,9 +139,9 @@ func (m LoginModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 
-				// Transition! We need to pass username to Chat state.
+				// Transition! We need to pass username and keys to Chat state.
 				return m, func() tea.Msg {
-					return StateChangeMsg{NewState: StateChat, Username: username}
+					return StateChangeMsg{NewState: StateChat, Username: username, Keys: keys}
 				}
 			}
 		}

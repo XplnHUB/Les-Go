@@ -26,6 +26,7 @@ type ChatModel struct {
 	err      error
 	myUser   string
 	keys     *crypto.KeyPair // In a real scenario, this would persist on disk
+	online   map[string]bool // Sidebar data
 }
 
 func InitialChatModel(client *network.APIClient) ChatModel {
@@ -33,6 +34,7 @@ func InitialChatModel(client *network.APIClient) ChatModel {
 		client:   client,
 		messages: []string{},
 		inputs:   make([]textinput.Model, 2),
+		online:   make(map[string]bool),
 	}
 
 	var t textinput.Model
@@ -85,8 +87,24 @@ func (m ChatModel) listenForMessages() tea.Cmd {
 		if event.Type == "CHAT_MESSAGE" {
 			return WSMsg{From: event.From, Data: event.Payload}
 		}
+		if event.Type == "USER_ONLINE" || event.Type == "USER_OFFLINE" {
+			return PresenceMsg{Username: event.Payload, Online: event.Type == "USER_ONLINE"}
+		}
+		if event.Type == "ONLINE_USERS" {
+			users := strings.Split(event.Payload, ",")
+			return OnlineListMsg{Usernames: users}
+		}
 		return m.listenForMessages()() // Wait for next msg if not chat
 	}
+}
+
+type OnlineListMsg struct {
+	Usernames []string
+}
+
+type PresenceMsg struct {
+	Username string
+	Online   bool
 }
 
 func (m ChatModel) SetUsernameAndKeys(u string, k *crypto.KeyPair) ChatModel {
@@ -120,6 +138,21 @@ func (m ChatModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		m.messages = append(m.messages, decodedMsg)
 		cmds = append(cmds, m.listenForMessages()) // Wait for next message
+
+	case PresenceMsg:
+		m.online[msg.Username] = msg.Online
+		if !msg.Online {
+			delete(m.online, msg.Username)
+		}
+		cmds = append(cmds, m.listenForMessages())
+
+	case OnlineListMsg:
+		for _, u := range msg.Usernames {
+			if u != "" {
+				m.online[u] = true
+			}
+		}
+		cmds = append(cmds, m.listenForMessages())
 
 	case tea.KeyMsg:
 		switch msg.String() {
@@ -211,7 +244,25 @@ func (m ChatModel) View() string {
 
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("62")).Render(fmt.Sprintf("Les'Go Chat Session [%s]", m.myUser)) + "\n\n")
 
-	// Message history
+	// 1. Sidebar
+	sidebarStyle := lipgloss.NewStyle().
+		Width(20).Height(10).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		MarginRight(1)
+
+	var onlineList []string
+	for user := range m.online {
+		status := lipgloss.NewStyle().Foreground(lipgloss.Color("42")).Render("●")
+		onlineList = append(onlineList, fmt.Sprintf("%s %s", status, user))
+	}
+	sidebarContent := lipgloss.NewStyle().Bold(true).Render("Online") + "\n" + strings.Join(onlineList, "\n")
+	if len(onlineList) == 0 {
+		sidebarContent += "\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("(none)")
+	}
+
+	// 2. Message history
 	historyBox := lipgloss.NewStyle().
 		Width(50).Height(10).
 		Border(lipgloss.NormalBorder()).
@@ -222,7 +273,10 @@ func (m ChatModel) View() string {
 	if historyStr == "" {
 		historyStr = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("No messages yet...")
 	}
-	b.WriteString(historyBox.Render(historyStr) + "\n\n")
+
+	// Join Sidebar and History
+	mainView := lipgloss.JoinHorizontal(lipgloss.Top, sidebarStyle.Render(sidebarContent), historyBox.Render(historyStr))
+	b.WriteString(mainView + "\n\n")
 
 	for i := range m.inputs {
 		b.WriteString(m.inputs[i].View() + "\n")
