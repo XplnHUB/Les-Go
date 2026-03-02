@@ -55,6 +55,22 @@ go install github.com/XplnHUB/Les-Go/client@latest
 # The 'lesgo' command will be available if your GOBIN is in your PATH
 ```
 
+### 3. Homebrew (macOS/Linux - Pop!_OS)
+Les'Go works perfectly on Linux (including Pop!_OS). If you have Homebrew installed on Linux:
+```bash
+brew tap XplnHUB/tap
+brew install lesgo
+```
+
+### 4. Direct Binary (Linux x86_64)
+For Pop!_OS users without Homebrew:
+```bash
+# Download for Intel/AMD Linux
+curl -L -O https://github.com/XplnHUB/Les-Go/releases/download/v1.0.15/lesgo_1.0.15_linux_amd64.tar.gz
+tar -xzf lesgo_*.tar.gz
+sudo mv lesgo /usr/local/bin/
+```
+
 **Using GitHub CLI:**
 ```bash
 # Download the latest client for your architecture
@@ -107,16 +123,21 @@ Once both are online, use `lesgo connect <id>` as normal. The messages will be e
 
 ## Troubleshooting
 
-### Error: "address already in use"
+### Error: "Server unavailable" (on another Mac)
+1. **Firewall**: On the Server Mac, go to `System Settings -> Network -> Firewall`. Ensure it's off or allows `server_bin` / `go`.
+2. **Network Isolation**: If you are on a public/office Wi-Fi (like "Guest" networks), they often block devices from talking to each other. Try using a mobile hotspot.
+3.  **Ping Test**: From the *other* Mac, try to reach the server:
+    ```bash
+    ping 10.98.42.31
+    ```
+    If ping fails, the laptops cannot see each other on the network.
+4. **Incorrect Server Address**: Ensure you ran `export LESGO_SERVER=10.98.42.31:8080` before starting the client.
+
+### Error: "address already in use" (port issue)
 This means another server is already running on port 8080. 
 To fix it, kill the existing process:
 - **Mac/Linux**: `lsof -i :8080 -t | xargs kill -9`
 - **Windows**: `netstat -ano | findstr :8080` (then kill the PID via Task Manager)
-
-### Error: "Server unavailable"
-1. Ensure the relay server is running (`go run ./server/main.go`).
-2. If the server is on a different machine, ensure you've set `export LESGO_SERVER=IP:PORT`.
-3. Check your firewall settings.
 
 ## Docker Usage (Server Only)
 
