@@ -33,7 +33,12 @@ type SendMsgReq struct {
 	Encrypted string `json:"encrypted_data"`
 }
 
+type AckMsgReq struct {
+	MessageID string `json:"message_id"`
+}
+
 type MsgResponse struct {
+	ID        string `json:"id"`
 	From      string `json:"from"`
 	Encrypted string `json:"encrypted_data"`
 	Timestamp string `json:"timestamp"`
@@ -195,6 +200,7 @@ func (s *Server) HandleGetUnread() http.HandlerFunc {
 
 		for _, msg := range msgs {
 			res = append(res, MsgResponse{
+				ID:        msg.ID,
 				From:      msg.Sender,
 				Encrypted: msg.Encrypted,
 				Timestamp: msg.CreatedAt.Format(time.RFC3339),
@@ -202,6 +208,23 @@ func (s *Server) HandleGetUnread() http.HandlerFunc {
 		}
 
 		writeJSON(w, http.StatusOK, res)
+	})
+}
+
+func (s *Server) HandleAckMessage() http.HandlerFunc {
+	return authMiddleware(func(w http.ResponseWriter, r *http.Request, username string) {
+		var req AckMsgReq
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid JSON")
+			return
+		}
+
+		if err := s.DB.MarkMessageAsRead(username, req.MessageID); err != nil {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusOK, map[string]string{"status": "acknowledged"})
 	})
 }
 

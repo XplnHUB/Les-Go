@@ -108,17 +108,31 @@ func (db *InMemoryDB) StoreMessage(sender, receiver, encrypted string) (Message,
 }
 
 func (db *InMemoryDB) GetUnreadMessages(username string) []Message {
-	db.mu.Lock()
-	defer db.mu.Unlock()
+	db.mu.RLock()
+	defer db.mu.RUnlock()
 
 	var unread []Message
 	if msgs, exists := db.messages[username]; exists {
-		for i := range msgs {
-			if !msgs[i].IsRead {
-				unread = append(unread, msgs[i])
-				msgs[i].IsRead = true // Mark as read
+		for _, msg := range msgs {
+			if !msg.IsRead {
+				unread = append(unread, msg)
 			}
 		}
 	}
 	return unread
+}
+
+func (db *InMemoryDB) MarkMessageAsRead(receiver, messageID string) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+
+	if msgs, exists := db.messages[receiver]; exists {
+		for i := range msgs {
+			if msgs[i].ID == messageID {
+				msgs[i].IsRead = true
+				return nil
+			}
+		}
+	}
+	return errors.New("message not found")
 }

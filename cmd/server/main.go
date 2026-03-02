@@ -25,6 +25,7 @@ func main() {
 	http.HandleFunc("/api/users/", server.HandleGetKey()) // /api/users/{username}/key
 	http.HandleFunc("/api/messages/send", server.HandleSendMessage())
 	http.HandleFunc("/api/messages/unread", server.HandleGetUnread())
+	http.HandleFunc("/api/messages/ack", server.HandleAckMessage())
 
 	http.HandleFunc("/ws", server.HandleWS())
 

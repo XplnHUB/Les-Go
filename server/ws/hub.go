@@ -59,6 +59,7 @@ func (h *Hub) Run() {
 			h.clients[client.Username] = client
 			h.mu.Unlock()
 			log.Printf("Client connected: %s", client.Username)
+			h.broadcastPresence(client.Username, "USER_ONLINE")
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -66,8 +67,11 @@ func (h *Hub) Run() {
 				delete(h.clients, client.Username)
 				close(client.Send)
 				log.Printf("Client disconnected: %s", client.Username)
+				h.mu.Unlock() // Unlock before broadcasting to avoid deadlock if broadcastPresence needs lock
+				h.broadcastPresence(client.Username, "USER_OFFLINE")
+			} else {
+				h.mu.Unlock()
 			}
-			h.mu.Unlock()
 
 		case message := <-h.broadcast:
 			// Simply broadcast to all for now (not used for E2EE DMs yet)
@@ -106,6 +110,36 @@ func (h *Hub) Forward(to string, event Event) bool {
 	default:
 		return false
 	}
+}
+
+func (h *Hub) broadcastPresence(username, eventType string) {
+	event := Event{
+		Type:    eventType,
+		Payload: username,
+	}
+	data, _ := json.Marshal(event)
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, client := range h.clients {
+		// Don't send status update to the user themselves for now,
+		// or do, doesn't matter much for a TUI.
+		select {
+		case client.Send <- data:
+		default:
+			// If client is slow, we skip them for this broadcast
+		}
+	}
+}
+
+func (h *Hub) GetOnlineUsers() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	var online []string
+	for username := range h.clients {
+		online = append(online, username)
+	}
+	return online
 }
 
 // ServeWS handles websocket requests
