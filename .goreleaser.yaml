@@ -73,9 +73,9 @@ scoops:
 
 dockers:
   - image_templates:
-      - "ghcr.io/xplnhub/lesgo-server:latest"
-      - "ghcr.io/xplnhub/lesgo-server:{{ .Version }}"
-    dockerfile: server/Dockerfile
+      - "ghcr.io/codemaverick143/lesgo-server:latest"
+      - "ghcr.io/codemaverick143/lesgo-server:{{ .Version }}"
+    dockerfile: server/Dockerfile.goreleaser
     use: buildx
     ids:
       - lesgo-server

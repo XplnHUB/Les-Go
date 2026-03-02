@@ -160,10 +160,14 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 }
 
 func connectToServer(myID string) *websocket.Conn {
-	u := "ws://localhost:8080/ws"
+	serverAddr := os.Getenv("LESGO_SERVER")
+	if serverAddr == "" {
+		serverAddr = "localhost:8080"
+	}
+	u := fmt.Sprintf("ws://%s/ws", serverAddr)
 	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
 	if err != nil {
-		fmt.Printf("Server unavailable at %s\n", u)
+		fmt.Printf("Server unavailable at %s. Use export LESGO_SERVER=IP:PORT to change it.\n", u)
 		return nil
 	}
 

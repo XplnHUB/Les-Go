@@ -1,0 +1,17 @@
+# Optimized for GoReleaser
+FROM alpine:latest
+
+# Security: Add a non-root user
+RUN adduser -D -u 1000 lesgo
+USER lesgo
+
+WORKDIR /home/lesgo/
+
+# Copy the pre-built binary provided by GoReleaser
+COPY server_bin .
+
+# Documentation
+EXPOSE 8080
+
+# Run the binary
+ENTRYPOINT ["./server_bin"]
