@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -21,6 +22,8 @@ const (
 	TypeMessage     = "MESSAGE"
 	TypeDisconnect  = "DISCONNECT"
 )
+
+var Version = "v1.0.16"
 
 type Message struct {
 	Type string `json:"type"`
@@ -38,6 +41,10 @@ func main() {
 		command = "online"
 	} else {
 		arg1 := os.Args[1]
+		if arg1 == "-v" || arg1 == "--v" || arg1 == "-version" || arg1 == "--version" {
+			fmt.Printf("Les'Go version %s\n", GetVersion())
+			return
+		}
 		if len(arg1) == 10 && isNumeric(arg1) {
 			// If it looks like an ID, default to connect
 			command = "connect"
@@ -218,6 +225,15 @@ func registerAtServer(conn *websocket.Conn, myID string) {
 		Type: TypeRegister,
 		From: myID,
 	})
+}
+
+func GetVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			return info.Main.Version
+		}
+	}
+	return Version
 }
 
 func containsPort(host string) bool {
