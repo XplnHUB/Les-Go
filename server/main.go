@@ -72,14 +72,19 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 
 		case TypeChatRequest, TypeChatAccept, TypeChatReject, TypeKeyExchange, TypeMessage:
 			targetID := msg.To
+			log.Printf("Routing %s from %s to %s", msg.Type, msg.From, targetID)
 			if targetConn, ok := onlineUsers.Load(targetID); ok {
-				targetConn.(*websocket.Conn).WriteJSON(msg)
+				err := targetConn.(*websocket.Conn).WriteJSON(msg)
+				if err != nil {
+					log.Printf("Failed to write %s to %s: %v", msg.Type, targetID, err)
+				}
 				if msg.Type == TypeChatAccept {
 					activeChats.Store(msg.From, msg.To)
 					activeChats.Store(msg.To, msg.From)
 					log.Printf("Chat started: %s <-> %s", msg.From, msg.To)
 				}
 			} else {
+				log.Printf("Target %s not found (offline)", targetID)
 				// Optionally notify sender that user is offline
 				conn.WriteJSON(Message{
 					Type: "ERROR",

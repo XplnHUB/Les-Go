@@ -10,8 +10,15 @@ import (
 
 const idFile = "device.txt"
 
-// GetOrGenerateID retrieves the 10-digit ID from device.txt or generates a new one.
+// GetOrGenerateID retrieves the 10-digit ID from LESGO_ID env, device.txt or generates a new one.
 func GetOrGenerateID() (string, error) {
+	// Check environment variable first (useful for testing multiple clients on one machine)
+	if envID := os.Getenv("LESGO_ID"); envID != "" {
+		if len(envID) == 10 {
+			return envID, nil
+		}
+	}
+
 	data, err := os.ReadFile(idFile)
 	if err == nil {
 		id := strings.TrimSpace(string(data))

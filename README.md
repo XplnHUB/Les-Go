@@ -9,6 +9,7 @@ Les'Go is a production-ready, peer messaging system written in Go. It features a
 - **End-to-End Encryption (E2EE)**: RSA-2048 encryption for all messages.
 - **In-Memory Relay**: Zero-knowledge server that only forwards encrypted data.
 - **Anonymous**: No accounts, no database, no personal data stored.
+- **Easy Setup**: Works out-of-the-box with public relay or private LAN (see [SETUP.md](./SETUP.md)).
 
 ## Project Structure
 
