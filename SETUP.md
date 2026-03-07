@@ -11,12 +11,12 @@ Once the server is deployed to `lesgo.xplnhub.com`, no configuration is needed.
     ```
 2.  **Laptop A**: Go online.
     ```bash
-    lesgo online
+    lesgo
     ```
     *Note your Device ID (e.g., `1234567890`).*
 3.  **Laptop B**: Connect to Laptop A.
     ```bash
-    lesgo connect 1234567890
+    lesgo 1234567890
     ```
 
 ---

@@ -42,11 +42,11 @@ cd Les-Go
 # Install dependencies
 go mod download
 
-# Run the Server
-go run ./server/main.go
+# Go online (waits for requests)
+lesgo
 
-# Run the Client
-go run ./client/*.go online
+# Connect to a peer
+lesgo <10-digit-id>
 ```
 
 ### 2. Global Installation (via Go)
