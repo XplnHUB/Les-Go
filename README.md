@@ -74,7 +74,7 @@ sudo mv lesgo /usr/local/bin/
 **Using GitHub CLI:**
 ```bash
 # Download the latest client for your architecture
-gh release download v1.0.1 -p "*darwin_arm64.tar.gz" # for Mac M1/M2/M3
+gh release download v1.0.1 -p "*darwin_arm64.tar.gz"
 tar -xzf lesgo_*.tar.gz
 chmod +x lesgo
 ```
@@ -108,7 +108,7 @@ On the machine running the server, find your local network IP:
 Before running the client on the second machine, point it to the first machine's IP:
 ```bash
 # Set the environment variable
-export LESGO_SERVER=192.168.1.10:8080
+export LESGO_SERVER=192.168.1.10:80
 
 # Now run the client
 go run ./client/*.go online
@@ -131,13 +131,13 @@ Once both are online, use `lesgo connect <id>` as normal. The messages will be e
     ping 10.98.42.31
     ```
     If ping fails, the laptops cannot see each other on the network.
-4. **Incorrect Server Address**: Ensure you ran `export LESGO_SERVER=10.98.42.31:8080` before starting the client.
+4. **Incorrect Server Address**: Ensure you ran `export LESGO_SERVER=10.98.42.31:80` before starting the client.
 
 ### Error: "address already in use" (port issue)
 This means another server is already running on port 8080. 
 To fix it, kill the existing process:
-- **Mac/Linux**: `lsof -i :8080 -t | xargs kill -9`
-- **Windows**: `netstat -ano | findstr :8080` (then kill the PID via Task Manager)
+- **Mac/Linux**: `lsof -i :80 -t | xargs kill -9`
+- **Windows**: `netstat -ano | findstr :80` (then kill the PID via Task Manager)
 
 ## Docker Usage (Server Only)
 
@@ -146,14 +146,14 @@ If you want to run the relay server on any machine without installing Go:
 ### 1. Build and Run locally
 ```bash
 docker build -t lesgo-server -f server/Dockerfile .
-docker run -d -p 8080:8080 lesgo-server
+docker run -d -p 80:80 lesgo-server
 ```
 
 ### 2. Pull from GHCR (Production)
 Once you have pushed a tag and the GitHub Action has finished:
 ```bash
 docker pull ghcr.io/xplnhub/lesgo-server:latest
-docker run -d -p 8080:8080 ghcr.io/xplnhub/lesgo-server:latest
+docker run -d -p 80:80 ghcr.io/xplnhub/lesgo-server:latest
 ```
 
 ## License

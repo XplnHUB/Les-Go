@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -162,9 +163,17 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 func connectToServer(myID string) *websocket.Conn {
 	serverAddr := os.Getenv("LESGO_SERVER")
 	if serverAddr == "" {
-		serverAddr = "localhost:8080"
+		serverAddr = "lesgo.xplnhub.com"
 	}
-	u := fmt.Sprintf("ws://%s/ws", serverAddr)
+	var u string
+	if serverAddr == "localhost:8080" || serverAddr == "127.0.0.1:8080" {
+		u = fmt.Sprintf("ws://%s/ws", serverAddr)
+	} else if !containsPort(serverAddr) {
+		// Default to wss for public domains if no port is specified
+		u = fmt.Sprintf("wss://%s/ws", serverAddr)
+	} else {
+		u = fmt.Sprintf("ws://%s/ws", serverAddr)
+	}
 	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
 	if err != nil {
 		fmt.Printf("Server unavailable at %s. Use export LESGO_SERVER=IP:PORT to change it.\n", u)
@@ -178,6 +187,10 @@ func connectToServer(myID string) *websocket.Conn {
 	})
 
 	return conn
+}
+
+func containsPort(host string) bool {
+	return strings.Contains(host, ":")
 }
 
 func printUsage() {

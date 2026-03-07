@@ -11,7 +11,7 @@ WORKDIR /home/lesgo/
 COPY server_bin .
 
 # Documentation
-EXPOSE 8080
+EXPOSE 80
 
 # Run the binary
 ENTRYPOINT ["./server_bin"]

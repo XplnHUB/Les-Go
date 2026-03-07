@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -108,9 +109,15 @@ func handleDisconnect(id string) {
 }
 
 func main() {
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "80"
+	}
+	addr := ":" + port
+
 	http.HandleFunc("/ws", handleWS)
-	log.Println("Relay Server starting on :8080...")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	log.Printf("Relay Server starting on %s...", addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}
 }
