@@ -2,40 +2,31 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/XplnHUB/Les-Go/protocol"
 )
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool { return true },
 }
 
-// Message types
-const (
-	TypeRegister    = "REGISTER"
-	TypeChatRequest = "CHAT_REQUEST"
-	TypeChatAccept  = "CHAT_ACCEPT"
-	TypeChatReject  = "CHAT_REJECT"
-	TypeKeyExchange = "KEY_EXCHANGE"
-	TypeMessage     = "MESSAGE"
-	TypeDisconnect  = "DISCONNECT"
-)
-
-type Message struct {
-	Type string `json:"type"`
-	From string `json:"from"`
-	To   string `json:"to"`
-	Data string `json:"data"`
+// Client represents an online device and its connection state.
+type Client struct {
+	ID       string
+	Conn     *websocket.Conn
+	LastSeen time.Time
+	Mu       sync.Mutex
 }
 
 // Global state (In-memory only)
 var (
-	onlineUsers sync.Map // ID (string) -> *websocket.Conn
+	onlineUsers sync.Map // ID (string) -> *Client
 	activeChats sync.Map // ID (string) -> ID (string)
 )
 
@@ -58,38 +49,57 @@ func handleWS(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 
-		var msg Message
-		if err := json.Unmarshal(p, &msg); err != nil {
+		var packet protocol.Packet
+		if err := json.Unmarshal(p, &packet); err != nil {
 			log.Printf("JSON unmarshal error: %v", err)
 			continue
 		}
 
-		switch msg.Type {
-		case TypeRegister:
-			myID = msg.From
-			onlineUsers.Store(myID, conn)
+		// Update LastSeen on every valid packet
+		if client, ok := onlineUsers.Load(myID); ok && myID != "" {
+			client.(*Client).Mu.Lock()
+			client.(*Client).LastSeen = time.Now()
+			client.(*Client).Mu.Unlock()
+		}
+
+		switch packet.Type {
+		case protocol.TypeRegister:
+			myID = packet.From
+			client := &Client{
+				ID:       myID,
+				Conn:     conn,
+				LastSeen: time.Now(),
+			}
+			onlineUsers.Store(myID, client)
 			log.Printf("User registered: %s", myID)
 
-		case TypeChatRequest, TypeChatAccept, TypeChatReject, TypeKeyExchange, TypeMessage:
-			targetID := msg.To
-			log.Printf("Routing %s from %s to %s", msg.Type, msg.From, targetID)
-			if targetConn, ok := onlineUsers.Load(targetID); ok {
-				err := targetConn.(*websocket.Conn).WriteJSON(msg)
+		case protocol.TypeHeartbeat:
+			if myID != "" {
+				// LastSeen updated above switch
+				log.Printf("Heartbeat received from: %s", myID)
+			}
+
+		case protocol.TypeConnectRequest, protocol.TypeConnectAccept, protocol.TypeConnectReject,
+			protocol.TypePublicKey, protocol.TypeAESKey, protocol.TypeMessage, protocol.TypeACK:
+			
+			targetID := packet.To
+			if targetCl, ok := onlineUsers.Load(targetID); ok {
+				targetCl.(*Client).Mu.Lock()
+				err := targetCl.(*Client).Conn.WriteJSON(packet)
+				targetCl.(*Client).Mu.Unlock()
+				
 				if err != nil {
-					log.Printf("Failed to write %s to %s: %v", msg.Type, targetID, err)
+					log.Printf("Failed to forward %s to %s: %v", packet.Type, targetID, err)
 				}
-				if msg.Type == TypeChatAccept {
-					activeChats.Store(msg.From, msg.To)
-					activeChats.Store(msg.To, msg.From)
-					log.Printf("Chat started: %s <-> %s", msg.From, msg.To)
+				
+				if packet.Type == protocol.TypeConnectAccept {
+					activeChats.Store(packet.From, packet.To)
+					activeChats.Store(packet.To, packet.From)
+					log.Printf("Chat session established: %s <-> %s", packet.From, packet.To)
 				}
 			} else {
-				log.Printf("Target %s not found (offline)", targetID)
-				// Optionally notify sender that user is offline
-				conn.WriteJSON(Message{
-					Type: "ERROR",
-					Data: fmt.Sprintf("User %s is offline", targetID),
-				})
+				log.Printf("Target %s offline, cannot forward %s", targetID, packet.Type)
+				// Optionally send error packet back
 			}
 		}
 	}
@@ -103,13 +113,32 @@ func handleDisconnect(id string) {
 		activeChats.Delete(id)
 		activeChats.Delete(peerID.(string))
 
-		if peerConn, ok := onlineUsers.Load(peerID.(string)); ok {
-			peerConn.(*websocket.Conn).WriteJSON(Message{
-				Type: TypeDisconnect,
+		if peerCl, ok := onlineUsers.Load(peerID.(string)); ok {
+			peerCl.(*Client).Mu.Lock()
+			peerCl.(*Client).Conn.WriteJSON(protocol.Packet{
+				Type: protocol.TypeDisconnect,
 				From: id,
-				Data: "Peer disconnected",
 			})
+			peerCl.(*Client).Mu.Unlock()
 		}
+	}
+}
+
+func startCleanupLoop() {
+	ticker := time.NewTicker(30 * time.Second)
+	for range ticker.C {
+		now := time.Now()
+		onlineUsers.Range(func(key, value interface{}) bool {
+			client := value.(*Client)
+			client.Mu.Lock()
+			if now.Sub(client.LastSeen) > 45*time.Second {
+				log.Printf("Cleaning up dead session: %s", client.ID)
+				client.Conn.Close()
+				// handleDisconnect will be triggered by handleWS loop exit
+			}
+			client.Mu.Unlock()
+			return true
+		})
 	}
 }
 
@@ -119,6 +148,9 @@ func main() {
 		port = "80"
 	}
 	addr := ":" + port
+
+	// Start session cleanup loop
+	go startCleanupLoop()
 
 	http.HandleFunc("/ws", handleWS)
 	log.Printf("Relay Server starting on %s...", addr)

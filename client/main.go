@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -10,34 +11,16 @@ import (
 	"strings"
 
 	"github.com/gorilla/websocket"
-)
-
-// Message types
-const (
-	TypeRegister    = "REGISTER"
-	TypeChatRequest = "CHAT_REQUEST"
-	TypeChatAccept  = "CHAT_ACCEPT"
-	TypeChatReject  = "CHAT_REJECT"
-	TypeKeyExchange = "KEY_EXCHANGE"
-	TypeMessage     = "MESSAGE"
-	TypeDisconnect  = "DISCONNECT"
+	"github.com/XplnHUB/Les-Go/protocol"
 )
 
 var Version = "v1.0.16"
-
-type Message struct {
-	Type string `json:"type"`
-	From string `json:"from"`
-	To   string `json:"to"`
-	Data string `json:"data"`
-}
 
 func main() {
 	var command string
 	var targetID string
 
 	if len(os.Args) < 2 {
-		// Default behavior: Go online
 		command = "online"
 	} else {
 		arg1 := os.Args[1]
@@ -46,7 +29,6 @@ func main() {
 			return
 		}
 		if len(arg1) == 10 && isNumeric(arg1) {
-			// If it looks like an ID, default to connect
 			command = "connect"
 			targetID = arg1
 		} else {
@@ -62,7 +44,7 @@ func main() {
 		log.Fatalf("ID error: %v", err)
 	}
 
-	// Generate keys for this session
+	// Generate RSA keys for this session (for AES key exchange)
 	privKey, err := GenerateKeyPair()
 	if err != nil {
 		log.Fatalf("Crypto error: %v", err)
@@ -101,6 +83,10 @@ func runOnline(myID string, privKey *rsa.PrivateKey, pubKeyPEM string) {
 	}
 	defer conn.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go StartHeartbeat(ctx, conn, myID)
+
 	fmt.Printf("You are online as [%s]. Waiting for incoming requests...\n", myID)
 
 	for {
@@ -110,13 +96,13 @@ func runOnline(myID string, privKey *rsa.PrivateKey, pubKeyPEM string) {
 			break
 		}
 
-		var msg Message
-		if err := json.Unmarshal(p, &msg); err != nil {
+		var packet protocol.Packet
+		if err := json.Unmarshal(p, &packet); err != nil {
 			continue
 		}
 
-		if msg.Type == TypeChatRequest {
-			HandleIncomingRequest(myID, conn, msg, privKey, pubKeyPEM)
+		if packet.Type == protocol.TypeConnectRequest {
+			HandleIncomingRequest(myID, conn, packet, privKey, pubKeyPEM)
 			fmt.Printf("\nYou are online as [%s]. Waiting for incoming requests...\n", myID)
 		}
 	}
@@ -134,15 +120,17 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 	}
 	defer conn.Close()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go StartHeartbeat(ctx, conn, myID)
+
 	fmt.Printf("Sending chat request to %s...\n", targetID)
-	err := conn.WriteJSON(Message{
-		Type: TypeChatRequest,
-		From: myID,
-		To:   targetID,
-	})
+	err := conn.WriteJSON(protocol.NewPacket(protocol.TypeConnectRequest, myID, targetID, ""))
 	if err != nil {
 		log.Fatalf("Failed to send request: %v", err)
 	}
+
+	var peerPubKey *rsa.PublicKey
 
 	for {
 		_, p, err := conn.ReadMessage()
@@ -151,33 +139,54 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 			break
 		}
 
-		var msg Message
-		if err := json.Unmarshal(p, &msg); err != nil {
+		var packet protocol.Packet
+		if err := json.Unmarshal(p, &packet); err != nil {
 			continue
 		}
 
-		switch msg.Type {
-		case TypeChatAccept:
-			// Initiator receives acceptor's public key
-			peerPubKey, err := PEMToPublicKey(msg.Data)
-			if err != nil {
-				fmt.Println("Invalid public key from peer.")
+		switch packet.Type {
+		case protocol.TypeConnectAccept:
+			// Initiator receives accept, waits for public key or sends ours?
+			// Handshake: A req -> B accept -> B pubkey -> A pubkey -> A aeskey
+			fmt.Printf("Request accepted by %s. Exchanging keys...\n", targetID)
+
+		case protocol.TypePublicKey:
+			if packet.From == targetID {
+				pub, err := PEMToPublicKey(packet.Payload)
+				if err != nil {
+					fmt.Println("Error: Invalid peer public key.")
+					return
+				}
+				peerPubKey = pub
+				
+				// Send our public key
+				conn.WriteJSON(protocol.NewPacket(protocol.TypePublicKey, myID, targetID, pubKeyPEM))
+
+				// Now we (the initiator) generate the AES key
+				aesKey, err := GenerateAESKey()
+				if err != nil {
+					fmt.Println("Error: Failed to generate session key.")
+					return
+				}
+
+				// Encrypt AES key with peer's RSA public key
+				encryptedKeyB64, err := EncryptWithRSA(peerPubKey, aesKey)
+				if err != nil {
+					fmt.Println("Error: Failed to encrypt session key.")
+					return
+				}
+
+				// Send AES key
+				conn.WriteJSON(protocol.NewPacket(protocol.TypeAESKey, myID, targetID, encryptedKeyB64))
+
+				// Start the chat
+				session := NewChatSession(targetID, aesKey)
+				StartChatSession(myID, conn, session)
 				return
 			}
-			// Send our public key to complete exchange
-			conn.WriteJSON(Message{
-				Type: TypeKeyExchange,
-				From: myID,
-				To:   targetID,
-				Data: pubKeyPEM,
-			})
-			StartChatSession(myID, targetID, conn, privKey, peerPubKey)
-			return
-		case TypeChatReject:
+
+		case protocol.TypeConnectReject:
 			fmt.Printf("Request rejected by %s.\n", targetID)
-			return
-		case "ERROR":
-			fmt.Printf("Error: %s\n", msg.Data)
 			return
 		}
 	}
@@ -192,14 +201,12 @@ func connectToServer(myID string) *websocket.Conn {
 	if serverAddr == "localhost:8080" || serverAddr == "127.0.0.1:8080" {
 		u = fmt.Sprintf("ws://%s/ws", serverAddr)
 	} else if !containsPort(serverAddr) {
-		// Default to wss for public domains if no port is specified
 		u = fmt.Sprintf("wss://%s/ws", serverAddr)
 	} else {
 		u = fmt.Sprintf("ws://%s/ws", serverAddr)
 	}
 	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
 	if err != nil {
-		// Fallback logic for out-of-the-box experience
 		if serverAddr == "lesgo.xplnhub.com" {
 			fmt.Printf("Public server [%s] unavailable. Trying local fallback (localhost:80)...\n", u)
 			uLocal := "ws://localhost:80/ws"
@@ -220,11 +227,7 @@ func connectToServer(myID string) *websocket.Conn {
 }
 
 func registerAtServer(conn *websocket.Conn, myID string) {
-	// Register immediately
-	conn.WriteJSON(Message{
-		Type: TypeRegister,
-		From: myID,
-	})
+	conn.WriteJSON(protocol.NewPacket(protocol.TypeRegister, myID, "", ""))
 }
 
 func GetVersion() string {
@@ -250,7 +253,7 @@ func isNumeric(s string) bool {
 }
 
 func printUsage() {
-	fmt.Println("Les'Go CLI - Chat system for the terminal")
+	fmt.Println("Les'Go CLI - " + Version)
 	fmt.Println("Usage:")
 	fmt.Println("  lesgo               Go online (default)")
 	fmt.Println("  lesgo <id>          Connect to a peer (default)")
