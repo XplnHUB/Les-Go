@@ -10,11 +10,11 @@ import (
 	"runtime/debug"
 	"strings"
 
-	"github.com/gorilla/websocket"
 	"github.com/XplnHUB/Les-Go/protocol"
+	"github.com/gorilla/websocket"
 )
 
-var Version = "v1.1.0"
+var Version = "v1.1.1"
 
 func main() {
 	var command string
@@ -158,7 +158,7 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 					return
 				}
 				peerPubKey = pub
-				
+
 				// Send our public key
 				conn.WriteJSON(protocol.NewPacket(protocol.TypePublicKey, myID, targetID, pubKeyPEM))
 
