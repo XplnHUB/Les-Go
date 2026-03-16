@@ -9,21 +9,20 @@ Les'Go is a production-ready, peer messaging system written in Go. It features a
 - **End-to-End Encryption (E2EE)**: RSA-2048 encryption for all messages.
 - **In-Memory Relay**: Zero-knowledge server that only forwards encrypted data.
 - **Anonymous**: No accounts, no database, no personal data stored.
-- **Easy Setup**: Works out-of-the-box with public relay or private LAN (see [SETUP.md](./SETUP.md)).
+- **Easy Setup**: Works out-of-the-box with public relay or private LAN (see [SETUP.md](./docs/SETUP.md)).
 
 ## Project Structure
 
 ```text
-.
-├── client/              # CLI Client logic
-│   ├── chat.go          # Chat session & input handling
-│   ├── crypto.go        # RSA Encryption/Decryption utilities
-│   ├── device.go        # Identity generation & persistence
-│   └── main.go          # CLI Entry point & command routing
+├── docs/                # Product & architecture documentation
+│   ├── connection.md    # Network & connection architecture
+│   ├── context.md       # AI context for the product
+│   ├── product.md       # Product requirements
+│   ├── protocol.md      # Packet protocol definition
+│   └── SETUP.md         # Multi-device setup guide
 ├── server/              # Relay Server logic
 │   └── main.go          # WebSocket relay & session manager
 ├── README.md            # You are here
-├── product.md           # Product requirements
 ├── todo.md              # Project status & development log
 └── go.mod               # Dependencies
 ```

@@ -28,8 +28,12 @@ To provide a secure, anonymous, and lightweight "WhatsApp for Terminal" experien
 - `server/`: Relay server logic.
   - `main.go`: WebSocket relay, session manager, and in-memory state.
 - `README.md`: General overview and installation instructions.
-- `product.md`: Detailed product requirements and specs.
-- `SETUP.md`: Guide for multi-device and local network setup.
+- `docs/`: Product & architecture documentation.
+  - `connection.md`: Network & connection architecture.
+  - `context.md`: AI context for the product.
+  - `product.md`: Detailed product requirements and specs.
+  - `protocol.md`: Frozen packet protocol definition.
+  - `SETUP.md`: Guide for multi-device and local network setup.
 
 ## CLI Commands
 - `lesgo id`: Display the local device ID.
