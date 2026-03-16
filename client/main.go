@@ -14,7 +14,7 @@ import (
 	"github.com/XplnHUB/Les-Go/protocol"
 )
 
-var Version = "v1.0.16"
+var Version = "v1.1.0"
 
 func main() {
 	var command string
