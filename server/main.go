@@ -142,6 +142,12 @@ func startCleanupLoop() {
 	}
 }
 
+func handleHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "time": time.Now().String()})
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -152,6 +158,7 @@ func main() {
 	// Start session cleanup loop
 	go startCleanupLoop()
 
+	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/ws", handleWS)
 	log.Printf("Relay Server starting on %s...", addr)
 	if err := http.ListenAndServe(addr, nil); err != nil {
