@@ -1,4 +1,4 @@
-name = "lesgo-relay"
+name = "lesgo"
 main = "worker.js"
 compatibility_date = "2024-03-20"
 
@@ -11,4 +11,4 @@ class_name = "RelayServer"
 
 [[migrations]]
 tag = "v1"
-new_classes = ["RelayServer"]
+new_sqlite_classes = ["RelayServer"]
