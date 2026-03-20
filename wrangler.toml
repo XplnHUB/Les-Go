@@ -9,6 +9,10 @@ enabled = true
 name = "RELAY"
 class_name = "RelayServer"
 
+[[routes]]
+pattern = "lesgo.backend.xplnhub.tech"
+custom_domain = true
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["RelayServer"]
