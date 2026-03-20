@@ -14,7 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-var Version = "v1.1.1"
+var Version = "v1.2.0"
 
 func main() {
 	var command string
