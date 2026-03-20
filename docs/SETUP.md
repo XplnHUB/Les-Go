@@ -3,7 +3,7 @@
 This guide explains how to connect two different laptops using Les'Go, either via the public relay server or a local network.
 
 ## Option 1: Using the Public Relay Server (Easiest)
-Once the server is deployed to `lesgo.xplnhub.com`, no configuration is needed.
+Once the server is deployed to `lesgo.backend.xplnhub.tech`, no configuration is needed.
 
 1.  **On both laptops**, install Les'Go:
     ```bash

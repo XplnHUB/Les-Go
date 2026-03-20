@@ -195,7 +195,7 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 func connectToServer(myID string) *websocket.Conn {
 	serverAddr := os.Getenv("LESGO_SERVER")
 	if serverAddr == "" {
-		serverAddr = "lesgo.xplnhub.com"
+		serverAddr = "lesgo.backend.xplnhub.tech"
 	}
 	var u string
 	if serverAddr == "localhost:8080" || serverAddr == "127.0.0.1:8080" {
@@ -207,7 +207,7 @@ func connectToServer(myID string) *websocket.Conn {
 	}
 	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
 	if err != nil {
-		if serverAddr == "lesgo.xplnhub.com" {
+		if serverAddr == "lesgo.backend.xplnhub.tech" {
 			fmt.Printf("Public server [%s] unavailable. Trying local fallback (localhost:80)...\n", u)
 			uLocal := "ws://localhost:80/ws"
 			connLocal, _, errLocal := websocket.DefaultDialer.Dial(uLocal, nil)
