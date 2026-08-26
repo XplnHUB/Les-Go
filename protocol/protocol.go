@@ -4,7 +4,7 @@ import "time"
 
 // Packet Types
 const (
-	TypeRegister      = "register"
+	TypeRegister       = "register"
 	TypeConnectRequest = "connect_request"
 	TypeConnectAccept  = "connect_accept"
 	TypeConnectReject  = "connect_reject"
@@ -14,6 +14,10 @@ const (
 	TypeACK            = "ack"
 	TypeHeartbeat      = "heartbeat"
 	TypeDisconnect     = "disconnect"
+	// TypeError is sent by a relay back to the sender when a request cannot be
+	// fulfilled (e.g. Payload "target_offline" or "rate_limited"). It is never
+	// sent client-to-client.
+	TypeError = "error"
 )
 
 // Packet represents the standard message structure.

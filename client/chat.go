@@ -2,16 +2,33 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
 	"crypto/rsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
+	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/XplnHUB/Les-Go/protocol"
+	"github.com/gorilla/websocket"
 )
+
+// ackTimeout is how long we wait for an ack before warning the user that a
+// message may not have been delivered.
+const ackTimeout = 8 * time.Second
+
+// newMessageID returns a short random hex ID used to correlate a message
+// with its ack.
+func newMessageID() string {
+	buf := make([]byte, 8)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(buf)
+}
 
 // StartChatSession manages the active chat interaction using E2EE AES-GCM.
 func StartChatSession(myID string, conn *websocket.Conn, session *ChatSession) {
@@ -35,14 +52,15 @@ func StartChatSession(myID string, conn *websocket.Conn, session *ChatSession) {
 				continue
 			}
 
-			if packet.Type == protocol.TypeMessage {
+			switch packet.Type {
+			case protocol.TypeMessage:
 				decrypted, err := session.Decrypt(packet.Payload)
 				if err != nil {
 					fmt.Printf("\r<System>: Failed to decrypt message from %s (Tampered?)\n> ", packet.From)
 					continue
 				}
 				fmt.Printf("\r<%s>: %s\n> ", packet.From, decrypted)
-				
+
 				// Send ACK
 				conn.WriteJSON(protocol.Packet{
 					Type:      protocol.TypeACK,
@@ -50,43 +68,84 @@ func StartChatSession(myID string, conn *websocket.Conn, session *ChatSession) {
 					To:        packet.From,
 					MessageID: packet.MessageID,
 				})
-			} else if packet.Type == protocol.TypeDisconnect {
+
+			case protocol.TypeACK:
+				session.AckReceived(packet.MessageID)
+
+			case protocol.TypeError:
+				fmt.Printf("\r<System>: Server error: %s\n> ", packet.Payload)
+
+			case protocol.TypeDisconnect:
 				fmt.Printf("\nPeer %s disconnected.\n", packet.From)
 				return
 			}
 		}
 	}()
 
-	// Read from Stdin goroutine
-	scanner := bufio.NewScanner(os.Stdin)
+	// Read stdin on its own goroutine so we're never blocked waiting on a
+	// keypress when the peer disconnects or the socket errors out.
+	inputCh := make(chan string)
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			inputCh <- scanner.Text()
+		}
+		close(inputCh)
+	}()
+
 	fmt.Print("> ")
-	for scanner.Scan() {
-		text := scanner.Text()
-		if strings.ToLower(text) == "exit" {
-			break
-		}
+	for {
+		select {
+		case <-done:
+			fmt.Println("Exiting chat...")
+			return
 
-		if text == "" {
+		case text, ok := <-inputCh:
+			if !ok {
+				fmt.Println("Exiting chat...")
+				return
+			}
+
+			if strings.ToLower(text) == "exit" {
+				fmt.Println("Exiting chat...")
+				return
+			}
+
+			if text == "" {
+				fmt.Print("> ")
+				continue
+			}
+
+			encrypted, err := session.Encrypt(text)
+			if err != nil {
+				fmt.Println("Error: Failed to encrypt message:", err)
+				continue
+			}
+
+			msgID := newMessageID()
+			pkt := protocol.NewPacket(protocol.TypeMessage, myID, session.PeerID, encrypted)
+			pkt.MessageID = msgID
+			session.MarkPending(msgID)
+
+			if err := conn.WriteJSON(pkt); err != nil {
+				fmt.Println("Error: Failed to send message:", err)
+				return
+			}
+
+			go warnIfUndelivered(session, msgID)
+
 			fmt.Print("> ")
-			continue
 		}
-
-		// Encrypt message with AES-GCM
-		encrypted, err := session.Encrypt(text)
-		if err != nil {
-			fmt.Println("Error: Failed to encrypt message:", err)
-			continue
-		}
-
-		err = conn.WriteJSON(protocol.NewPacket(protocol.TypeMessage, myID, session.PeerID, encrypted))
-		if err != nil {
-			fmt.Println("Error: Failed to send message:", err)
-			break
-		}
-		fmt.Print("> ")
 	}
+}
 
-	fmt.Println("Exiting chat...")
+// warnIfUndelivered surfaces a hint if no ack arrives for msgID within
+// ackTimeout. It's a best-effort UX signal, not a delivery guarantee.
+func warnIfUndelivered(session *ChatSession, msgID string) {
+	time.Sleep(ackTimeout)
+	if session.IsPending(msgID) {
+		fmt.Printf("\r<System>: No delivery confirmation for your last message yet.\n> ")
+	}
 }
 
 // HandleIncomingRequest handles chat requests and the 4-step secure handshake.
@@ -138,6 +197,16 @@ func HandleIncomingRequest(myID string, conn *websocket.Conn, initPacket protoco
 				// Start the chat session
 				session := NewChatSession(packet.From, aesKey)
 				StartChatSession(myID, conn, session)
+				return
+			}
+
+			if packet.Type == protocol.TypeError {
+				fmt.Printf("Server error during handshake: %s\n", packet.Payload)
+				return
+			}
+
+			if packet.Type == protocol.TypeDisconnect {
+				fmt.Printf("Peer %s disconnected before the handshake finished.\n", packet.From)
 				return
 			}
 		}

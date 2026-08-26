@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/XplnHUB/Les-Go/protocol"
+	"github.com/gorilla/websocket"
 )
 
 // StartHeartbeat begins sending heartbeat packets at the specified interval.

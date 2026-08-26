@@ -1,0 +1,31 @@
+name: Deploy Cloudflare Worker
+
+# Publishes worker.js to lesgo.backend.xplnhub.tech whenever the relay or its
+# config changes on main. Before this workflow existed, the Worker was
+# redeployed manually and out of band from git — no audit trail tying the
+# live relay to a specific commit (see understanding.md §10.3).
+#
+# Requires a CLOUDFLARE_API_TOKEN repo secret (Workers Scripts: Edit
+# permission on the target account) — create one at
+# https://dash.cloudflare.com/profile/api-tokens and add it under
+# Settings -> Secrets and variables -> Actions.
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "worker.js"
+      - "wrangler.toml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy

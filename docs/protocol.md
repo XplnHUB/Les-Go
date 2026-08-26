@@ -62,6 +62,28 @@ Keep-alive signal sent every 15 seconds.
 
 ### 10. `disconnect`
 Notification that a peer has disconnected.
+- `from`: the ID of the peer that disconnected.
+- Sent by the relay to the remaining participant of an active chat pairing
+  when the other side's connection closes or is reaped for missing
+  heartbeats. Both relay implementations (`server/main.go` and the
+  Cloudflare Worker in `worker.js`) are required to send this.
+
+### 11. `error`
+Sent by a relay back to the packet's sender when a request can't be
+fulfilled. Never sent client-to-client.
+- `from`: `"relay"`.
+- `to`: the original sender's ID.
+- `payload`: a short machine-readable reason string. Currently defined
+  reasons: `target_offline` (the addressed ID isn't currently registered)
+  and `rate_limited` (the sender exceeded the relay's packet rate limit).
+
+## Sender identity
+
+A relay only forwards a packet if `from` matches the ID that connection
+actually sent in its `register` packet. A packet with a `from` that doesn't
+match the connection's registered identity is dropped, not forwarded — this
+stops one connected client from spoofing another client's ID. Both relay
+implementations enforce this identically.
 
 ## Handshake Flow
 1. **Initiator** sends `connect_request`.

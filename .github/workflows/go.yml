@@ -25,4 +25,7 @@ jobs:
       run: go build -v -o lesgo ./client/*.go
 
     - name: Test
-      run: go test -v ./...
+      run: go test -v -race ./...
+
+    - name: Check Go/Worker protocol sync
+      run: node scripts/check_protocol_sync.js

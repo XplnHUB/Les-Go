@@ -20,10 +20,13 @@ Les'Go is a production-ready, peer messaging system written in Go. It features a
 │   ├── product.md       # Product requirements
 │   ├── protocol.md      # Packet protocol definition
 │   └── SETUP.md         # Multi-device setup guide
-├── server/              # Relay Server logic
+├── server/              # Go relay server (self-hosted option)
 │   └── main.go          # WebSocket relay & session manager
+├── protocol/            # Shared packet types, used by client & server
+├── worker.js             # Cloudflare Worker relay (production default) + web client
+├── wrangler.toml          # Cloudflare deployment config
+├── scripts/                # CI helper scripts (protocol drift check)
 ├── README.md            # You are here
-├── todo.md              # Project status & development log
 └── go.mod               # Dependencies
 ```
 
@@ -155,6 +158,24 @@ Once you have pushed a tag and the GitHub Action has finished:
 docker pull ghcr.io/xplnhub/lesgo-server:latest
 docker run -d -p 80:80 ghcr.io/xplnhub/lesgo-server:latest
 ```
+
+## Known Limitations
+
+- **No message history.** Nothing is ever persisted server-side or client-side beyond your own
+  device ID; closing a client loses the conversation.
+- **No offline delivery.** If your peer isn't online, `connect`/`message` packets are rejected
+  with a `target_offline` error rather than queued.
+- **A public relay running unauthenticated.** Anyone with your 10-digit ID can send you a chat
+  request. Device IDs are addresses, not credentials.
+- **Best-effort delivery confirmation.** The client warns if a message goes unacknowledged for a
+  few seconds, but there's no automatic retry.
+- **The embedded web client** (served by the Cloudflare relay at
+  `lesgo.backend.xplnhub.tech`) uses an independent crypto implementation (Web Crypto API) from
+  the CLI's Go implementation; full CLI↔browser handshake compatibility hasn't been verified
+  end-to-end.
+
+See [`docs/connection.md`](./docs/connection.md) for the full architecture, including how the two
+relay implementations (Go and Cloudflare) are kept in sync.
 
 ## License
 MIT

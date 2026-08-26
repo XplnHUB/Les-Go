@@ -26,8 +26,11 @@ func PublicKeyToPEM(pub *rsa.PublicKey) string {
 	if err != nil {
 		return ""
 	}
+	// "PUBLIC KEY" is the conventional PEM label for PKIX/SPKI-encoded keys
+	// (what MarshalPKIXPublicKey produces); "RSA PUBLIC KEY" is reserved for
+	// PKCS#1, which this is not.
 	pubPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PUBLIC KEY",
+		Type:  "PUBLIC KEY",
 		Bytes: pubASN1,
 	})
 	return string(pubPEM)

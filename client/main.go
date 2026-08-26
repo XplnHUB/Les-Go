@@ -188,6 +188,14 @@ func runConnect(myID, targetID string, privKey *rsa.PrivateKey, pubKeyPEM string
 		case protocol.TypeConnectReject:
 			fmt.Printf("Request rejected by %s.\n", targetID)
 			return
+
+		case protocol.TypeError:
+			fmt.Printf("Server error: %s\n", packet.Payload)
+			return
+
+		case protocol.TypeDisconnect:
+			fmt.Printf("Peer %s disconnected.\n", packet.From)
+			return
 		}
 	}
 }

@@ -1,4 +1,28 @@
+// Canonical relay packet types — MUST match protocol/protocol.go's Type*
+// constants exactly (same string values). scripts/check_protocol_sync.js
+// enforces this in CI so the two relay implementations can't silently drift
+// apart again (see docs/connection.md).
+const RELAY_PACKET_TYPES = {
+  REGISTER: "register",
+  CONNECT_REQUEST: "connect_request",
+  CONNECT_ACCEPT: "connect_accept",
+  CONNECT_REJECT: "connect_reject",
+  PUBLIC_KEY: "public_key",
+  AES_KEY: "aes_key",
+  MESSAGE: "message",
+  ACK: "ack",
+  HEARTBEAT: "heartbeat",
+  DISCONNECT: "disconnect",
+  ERROR: "error",
+};
 
+// Mirrors the Go relay's heartbeatTimeout/cleanupInterval (server/main.go).
+const DEAD_SESSION_MS = 45000;
+const CLEANUP_INTERVAL_MS = 30000;
+
+// Mirrors the Go relay's rateLimitMax/rateLimitWindow (server/main.go).
+const RATE_LIMIT_MAX = 20;
+const RATE_LIMIT_WINDOW_MS = 1000;
 
 export default {
   async fetch(request, env, ctx) {
@@ -27,7 +51,83 @@ export default {
 
 export class RelayServer {
   constructor(state, env) {
-    this.sessions = new Map();
+    this.state = state;
+    this.sessions = new Map(); // id -> WebSocket
+    this.lastSeen = new Map(); // id -> timestamp (ms)
+    this.pairs = new Map(); // id -> paired peer id (mirrors Go's activeChats)
+    this.rateWindows = new Map(); // id -> { count, windowStart }
+
+    // Schedule the periodic dead-session sweep via the Durable Object Alarm
+    // API (a plain setInterval wouldn't survive the object being evicted
+    // between requests).
+    state.blockConcurrencyWhile(async () => {
+      const existing = await state.storage.getAlarm();
+      if (existing === null) {
+        await state.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+      }
+    });
+  }
+
+  async alarm() {
+    const now = Date.now();
+    for (const [id, seenAt] of this.lastSeen) {
+      if (now - seenAt > DEAD_SESSION_MS) {
+        console.log(`Cleaning up dead session: ${id}`);
+        this.dropSession(id);
+      }
+    }
+    await this.state.storage.setAlarm(Date.now() + CLEANUP_INTERVAL_MS);
+  }
+
+  // dropSession removes id's session state, closes its socket if still open,
+  // and — mirroring server/main.go's handleDisconnect — notifies its active
+  // chat peer, if any, with a `disconnect` packet.
+  dropSession(id) {
+    const ws = this.sessions.get(id);
+    this.sessions.delete(id);
+    this.lastSeen.delete(id);
+    this.rateWindows.delete(id);
+
+    if (ws) {
+      try {
+        ws.close();
+      } catch (_) {
+        /* already closed */
+      }
+    }
+
+    const peerID = this.pairs.get(id);
+    if (peerID) {
+      this.pairs.delete(id);
+      this.pairs.delete(peerID);
+      const peerWs = this.sessions.get(peerID);
+      if (peerWs) {
+        try {
+          peerWs.send(JSON.stringify({ type: RELAY_PACKET_TYPES.DISCONNECT, from: id, timestamp: Date.now() }));
+        } catch (_) {
+          /* peer socket already gone */
+        }
+      }
+    }
+  }
+
+  sendError(ws, toID, reason) {
+    try {
+      ws.send(JSON.stringify({ type: RELAY_PACKET_TYPES.ERROR, from: "relay", to: toID, payload: reason, timestamp: Date.now() }));
+    } catch (_) {
+      /* socket already gone */
+    }
+  }
+
+  allowRate(id) {
+    const now = Date.now();
+    const w = this.rateWindows.get(id);
+    if (!w || now - w.windowStart > RATE_LIMIT_WINDOW_MS) {
+      this.rateWindows.set(id, { count: 1, windowStart: now });
+      return true;
+    }
+    w.count += 1;
+    return w.count <= RATE_LIMIT_MAX;
   }
 
   async fetch(request) {
@@ -38,21 +138,59 @@ export class RelayServer {
     let myID = null;
 
     server.addEventListener("message", (msg) => {
+      let packet;
       try {
-        const packet = JSON.parse(msg.data);
+        packet = JSON.parse(msg.data);
+      } catch (err) {
+        console.error("Relay error: invalid JSON", err);
+        return;
+      }
 
-        if (packet.type === "register") {
+      try {
+        // Sender-identity binding: a socket may only ever speak as the ID it
+        // registered with. This stops one connected client from forging the
+        // `from` field to impersonate another device's presence/requests/
+        // messages (see server/main.go's identical check).
+        if (packet.type === RELAY_PACKET_TYPES.REGISTER) {
+          if (myID !== null && packet.from !== myID) {
+            console.error(`Rejected re-register attempt: connection ${myID} tried to become ${packet.from}`);
+            return;
+          }
           myID = packet.from;
           this.sessions.set(myID, server);
+          this.lastSeen.set(myID, Date.now());
           console.log(`Registered: ${myID}`);
           return;
         }
 
-        if (packet.type === "heartbeat") return;
+        if (myID === null || packet.from !== myID) {
+          console.error(`Rejected spoofed packet: claimed from=${packet.from} on connection registered as ${myID}`);
+          return;
+        }
+
+        this.lastSeen.set(myID, Date.now());
+
+        if (packet.type === RELAY_PACKET_TYPES.HEARTBEAT) {
+          return;
+        }
+
+        if (!this.allowRate(myID)) {
+          console.error(`Rate limit exceeded for ${myID}`);
+          this.sendError(server, myID, "rate_limited");
+          return;
+        }
+
+        if (packet.type === RELAY_PACKET_TYPES.CONNECT_ACCEPT) {
+          this.pairs.set(packet.from, packet.to);
+          this.pairs.set(packet.to, packet.from);
+        }
 
         const target = this.sessions.get(packet.to);
         if (target) {
           target.send(JSON.stringify(packet));
+        } else {
+          console.error(`Target ${packet.to} offline, cannot forward ${packet.type}`);
+          this.sendError(server, myID, "target_offline");
         }
       } catch (err) {
         console.error("Relay error:", err);
@@ -61,7 +199,8 @@ export class RelayServer {
 
     server.addEventListener("close", () => {
       if (myID) {
-        this.sessions.delete(myID);
+        console.log(`User disconnected: ${myID}`);
+        this.dropSession(myID);
       }
     });
 
@@ -87,6 +226,7 @@ const html = `<!DOCTYPE html>
         .message { padding: 12px 16px; border-radius: 16px; max-width: 75%; font-size: 14px; line-height: 1.4; color: white; }
         .message.sent { align-self: flex-end; background: linear-gradient(135deg, var(--secondary), #00d2ff); border-bottom-right-radius: 4px; }
         .message.received { align-self: flex-start; background: rgba(255,255,255,0.1); border-bottom-left-radius: 4px; }
+        .message.system { align-self: center; background: rgba(255,255,255,0.06); font-style: italic; opacity: 0.8; }
         .chat-input-container { padding: 20px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; gap: 12px; }
         input { flex: 1; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px 16px; border-radius: 12px; outline: none; transition: 0.2s; }
         input:focus { border-color: var(--primary); background: rgba(255,255,255,0.08); }
@@ -131,7 +271,7 @@ const html = `<!DOCTYPE html>
 </html>`;
 
 const js = `
-const PACKET_TYPES = { REGISTER: "register", REQUEST: "connect_request", ACCEPT: "connect_accept", PUBKEY: "public_key", AES: "aes_key", MSG: "message", HB: "heartbeat", DISC: "disconnect" };
+const PACKET_TYPES = { REGISTER: "register", REQUEST: "connect_request", ACCEPT: "connect_accept", PUBKEY: "public_key", AES: "aes_key", MSG: "message", ACK: "ack", HB: "heartbeat", DISC: "disconnect", ERROR: "error" };
 class LesGoClient {
     constructor() {
         this.ws = null; this.myID = ""; this.keyPair = null; this.sessions = new Map(); this.activePeer = null;
@@ -155,7 +295,7 @@ class LesGoClient {
         switch(p.type) {
             case PACKET_TYPES.REQUEST: if(confirm("Request from "+p.from)) this.send(PACKET_TYPES.ACCEPT, p.from, ""); break;
             case PACKET_TYPES.ACCEPT: const pub = await this.exportPub(); this.send(PACKET_TYPES.PUBKEY, p.from, pub); break;
-            case PACKET_TYPES.PUBKEY: 
+            case PACKET_TYPES.PUBKEY:
                 const peerPk = await this.importPub(p.payload);
                 if(!this.sessions.has(p.from)) {
                     const aes = await crypto.subtle.generateKey({name: "AES-GCM", length: 256}, true, ["encrypt", "decrypt"]);
@@ -175,7 +315,18 @@ class LesGoClient {
                 break;
             case PACKET_TYPES.MSG:
                 const s = this.sessions.get(p.from);
-                if(s) { const txt = await this.decrypt(s.aes, p.payload); this.addMsg(p.from, txt, 'received'); }
+                if(s) {
+                    const txt = await this.decrypt(s.aes, p.payload);
+                    this.addMsg(p.from, txt, 'received');
+                    this.send(PACKET_TYPES.ACK, p.from, "", p.message_id);
+                }
+                break;
+            case PACKET_TYPES.DISC:
+                if (this.activePeer === p.from) { this.addSystemMsg(p.from + " disconnected."); }
+                this.sessions.delete(p.from);
+                break;
+            case PACKET_TYPES.ERROR:
+                this.addSystemMsg("Server error: " + p.payload);
                 break;
         }
     }
@@ -185,9 +336,10 @@ class LesGoClient {
         this.send(PACKET_TYPES.MSG, t, enc);
         this.addMsg(t, text, 'sent');
     }
-    send(type, to, payload) { this.ws.send(JSON.stringify({type, from: this.myID, to, payload, timestamp: Date.now()})); }
+    send(type, to, payload, messageId) { this.ws.send(JSON.stringify({type, from: this.myID, to, payload, timestamp: Date.now(), message_id: messageId})); }
     open(id) { this.activePeer = id; this.els.peer.innerText = "Chat with " + id; this.els.empty.classList.add('hidden'); this.els.chat.classList.remove('hidden'); }
     addMsg(id, text, type) { if(this.activePeer === id) { const d = document.createElement('div'); d.className = 'message '+type; d.innerText = text; this.els.list.appendChild(d); this.els.list.scrollTop = this.els.list.scrollHeight; } }
+    addSystemMsg(text) { const d = document.createElement('div'); d.className = 'message system'; d.innerText = text; this.els.list.appendChild(d); this.els.list.scrollTop = this.els.list.scrollHeight; }
     async exportPub() { const e = await crypto.subtle.exportKey("spki", this.keyPair.publicKey); return btoa(String.fromCharCode(...new Uint8Array(e))); }
     async importPub(b) { return await crypto.subtle.importKey("spki", new Uint8Array(atob(b).split('').map(c=>c.charCodeAt(0))), {name: "RSA-OAEP", hash: "SHA-256"}, true, ["encrypt"]); }
     async encrypt(k, t) {
